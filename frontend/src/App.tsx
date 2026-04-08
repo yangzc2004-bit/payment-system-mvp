@@ -11,7 +11,7 @@ import {
 } from "./api";
 import "./styles.css";
 
-const QUICK_AMOUNTS = [10, 30, 50, 100, 200, 500];
+const QUICK_AMOUNTS = [1, 5, 10, 30, 50, 100, 200, 500];
 const ADMIN_TOKEN_KEY = "payment-system-admin-token";
 
 type PaymentViewStatus = "verifying" | "ready" | "creating" | "invalid" | OrderStatus;
@@ -136,7 +136,7 @@ function PaymentPage() {
   });
 
   const amountNumber = Number(amount || 0);
-  const isAmountValid = /^\d+$/.test(amount) && amountNumber >= 10 && amountNumber <= 2000;
+  const isAmountValid = /^\d+$/.test(amount) && amountNumber >= 1 && amountNumber <= 2000;
   const hasCompletedOrder = !!activeOrder && isFinalStatus(activeOrder.status);
   const canCreateOrder = isAmountValid && (status === "ready" || hasCompletedOrder);
   const isFormLocked = !!activeOrder && !isFinalStatus(activeOrder.status);
@@ -312,10 +312,10 @@ function PaymentPage() {
                   value={amount}
                   disabled={isFormLocked}
                   onChange={(event) => setAmount(event.target.value.replace(/\D/g, ""))}
-                  placeholder="请输入 10 到 2000 之间的整数金额"
+                  placeholder="请输入 1 到 2000 之间的整数金额"
                 />
               </div>
-              {!isAmountValid ? <div className="error-text">金额必须是 10 到 2000 之间的整数。</div> : null}
+              {!isAmountValid ? <div className="error-text">金额必须是 1 到 2000 之间的整数。</div> : null}
             </div>
 
             <div className="field-block">
@@ -624,7 +624,7 @@ function AdminPage() {
                       <td>{order.userId}</td>
                       <td>¥{order.amount}</td>
                       <td><span className={`admin-status-pill status-${order.status}`}>{getStatusLabel(order.status)}</span></td>
-                      <td>{order.status === "code_issued" ? "已到账" : "处理中"}</td>
+                      <td>{order.status === "code_issued" ? "已到账" : order.status === "paying" ? "可补单" : "处理中"}</td>
                       <td>{formatDateTime(order.createdAt)}</td>
                     </tr>
                   ))}
@@ -668,3 +668,4 @@ export default function App() {
   const isAdminPage = window.location.pathname.startsWith("/admin");
   return isAdminPage ? <AdminPage /> : <PaymentPage />;
 }
+

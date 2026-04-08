@@ -104,8 +104,8 @@ router.post("/create-order", async (req, res) => {
     return res.status(401).json({ ok: false, message: access.message });
   }
 
-  if (!Number.isInteger(amount) || amount < 10 || amount > 2000) {
-    return res.status(400).json({ ok: false, message: "金额不合法，请输入 10 到 2000 之间的整数。" });
+  if (!Number.isInteger(amount) || amount < 1 || amount > 2000) {
+    return res.status(400).json({ ok: false, message: "金额不合法，请输入 1 到 2000 之间的整数。" });
   }
 
   const orderNo = generateOrderNo();
@@ -237,3 +237,4 @@ router.post("/alipay-notify", async (req, res) => {
 });
 
 export default router;
+
