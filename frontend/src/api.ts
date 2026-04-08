@@ -61,7 +61,7 @@ export type AdminOrderResponse = {
   order: OrderSummary;
 };
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL || "http://localhost:3001";
+const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").trim() || window.location.origin;
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, init);
