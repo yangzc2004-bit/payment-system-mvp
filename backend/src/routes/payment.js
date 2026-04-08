@@ -179,9 +179,24 @@ router.get("/order-status/:orderNo", async (req, res) => {
   return respondWithOrder(res, order);
 });
 
-router.get("/return", (req, res) => {
-  const orderNo = typeof req.query.out_trade_no === "string" ? req.query.out_trade_no : "";
+router.get("/return", async (req, res) => {
+  const payload = Object.fromEntries(
+    Object.entries(req.query).map(([key, value]) => [key, Array.isArray(value) ? String(value[0] || "") : String(value || "")])
+  );
+  const orderNo = typeof payload.out_trade_no === "string" ? payload.out_trade_no : "";
   const order = orderNo ? getOrder(orderNo) : null;
+
+  if (order) {
+    const verifyResult = verifyAlipayNotification(payload);
+    if (
+      verifyResult.ok &&
+      (verifyResult.tradeStatus === "TRADE_SUCCESS" || verifyResult.tradeStatus === "TRADE_FINISHED") &&
+      Math.abs(verifyResult.paidAmount - Number(order.amount)) <= 0.0001
+    ) {
+      await handleSuccessfulPayment(order, payload);
+    }
+  }
+
   const redirectBase = order?.returnPageUrl || `${req.protocol}://${req.get("host")}/`;
   const redirectUrl = new URL(redirectBase);
 
@@ -237,4 +252,5 @@ router.post("/alipay-notify", async (req, res) => {
 });
 
 export default router;
+
 
