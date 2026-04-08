@@ -48,13 +48,13 @@ async function applySuccessfulPayment(order, notifyPayload) {
 
 router.post("/login", (req, res) => {
   const { password } = req.body;
-  const token = createAdminSession(password);
+  const result = createAdminSession(password, req.ip);
 
-  if (!token) {
-    return res.status(401).json({ ok: false, message: "后台密码错误。" });
+  if (!result.ok) {
+    return res.status(401).json({ ok: false, message: result.message || "后台密码错误。" });
   }
 
-  return res.json({ ok: true, token, message: "后台登录成功。" });
+  return res.json({ ok: true, token: result.token, message: "后台登录成功。" });
 });
 
 router.use(requireAdminAuth);
@@ -109,3 +109,4 @@ router.post("/orders/:orderNo/replay-success", async (req, res) => {
 });
 
 export default router;
+
