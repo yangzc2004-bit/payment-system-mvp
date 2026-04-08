@@ -655,6 +655,41 @@ function AdminPage() {
                   <div>充值时间：{formatDateTime(selectedOrder.cardIssuedAt)}</div>
                   <div>结果信息：{selectedOrder.issueMessage || "无"}</div>
                 </div>
+
+                {selectedOrder.status === "paying" ? (
+                  <div className="detail-actions">
+                    <button
+                      type="button"
+                      className="secondary-button"
+                      onClick={async () => {
+                        if (!adminToken || !selectedOrder) {
+                          return;
+                        }
+
+                        try {
+                          const response = await fetch(`/api/admin/orders/${selectedOrder.orderNo}/replay-success`, {
+                            method: "POST",
+                            headers: {
+                              "Content-Type": "application/json",
+                              Authorization: `Bearer ${adminToken}`
+                            }
+                          });
+                          const data = await response.json();
+                          if (!response.ok) {
+                            throw new Error(data.message || "补单失败。");
+                          }
+                          setSelectedOrder(data.order);
+                          setFeedback(data.message || "补单成功。");
+                          await loadOrders(adminToken, statusFilter, selectedOrder.orderNo);
+                        } catch (error) {
+                          setFeedback(error instanceof Error ? error.message : "补单失败。");
+                        }
+                      }}
+                    >
+                      补单并自动充值
+                    </button>
+                  </div>
+                ) : null}
               </div>
             )}
           </div>
@@ -668,4 +703,5 @@ export default function App() {
   const isAdminPage = window.location.pathname.startsWith("/admin");
   return isAdminPage ? <AdminPage /> : <PaymentPage />;
 }
+
 
