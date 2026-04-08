@@ -101,7 +101,7 @@ function getStatusMessage(status: PaymentViewStatus) {
     case "created":
       return "订单已创建。";
     case "paying":
-      return "订单已创建，请按页面提示完成支付宝支付。";
+      return "订单已创建，请点击按钮在新窗口完成支付。";
     case "paid":
       return "支付成功，系统正在处理充值。";
     case "code_issued":
@@ -117,6 +117,10 @@ function getStatusMessage(status: PaymentViewStatus) {
 
 function isFinalStatus(status: OrderStatus) {
   return status === "code_issued" || status === "issue_failed" || status === "payment_failed";
+}
+
+function openPaymentWindow(url: string) {
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 function PaymentPage() {
@@ -250,7 +254,7 @@ function PaymentPage() {
       });
 
       if (data.paymentUrl && !data.paymentQrCode) {
-        window.location.href = data.paymentUrl;
+        openPaymentWindow(data.paymentUrl);
       }
     } catch (error) {
       setStatus("ready");
@@ -277,7 +281,7 @@ function PaymentPage() {
             <div className="eyebrow">Secure Payment Center</div>
             <h1>在线充值中心</h1>
             <p className="hero-copy">
-              当前接入易支付自动收款。创建订单后会自动跳转或展示二维码，支付成功后系统自动充值到你的 Sub2API 账户余额。
+              当前接入易支付自动收款。创建订单后会自动新开支付窗口或展示二维码，支付成功后系统自动充值到你的 Sub2API 账户余额。
             </p>
           </div>
           <div className={`status-card status-${status}`}>
@@ -345,7 +349,7 @@ function PaymentPage() {
             </div>
 
             <div className="panel-tip">
-              如果系统返回二维码，请直接使用支付宝扫码支付；如果返回跳转链接，点击按钮前往支付页。支付成功后会自动充值到账。
+              如果支付平台禁止 iframe 内跳转，系统会自动在新窗口打开支付页。支付成功后当前页面会自动轮询并显示到账结果。
             </div>
 
             <button type="button" className="pay-button" disabled={!canCreateOrder} onClick={handleCreateOrder}>
@@ -400,23 +404,23 @@ function PaymentPage() {
                   <div className="qr-card code-card">
                     <div className="qr-title">请使用支付宝扫码付款</div>
                     <img className="qr-image" src={pendingPaymentDisplay.paymentQrCode} alt="支付宝二维码" />
-                    <div className="qr-note">如果扫码失败，可尝试点击下方链接前往支付页。</div>
+                    <div className="qr-note">如果扫码失败，点击下方按钮在新窗口打开支付页。</div>
                     {pendingPaymentDisplay.paymentUrl ? (
-                      <button type="button" className="secondary-button" onClick={() => window.open(pendingPaymentDisplay.paymentUrl, "_blank", "noopener,noreferrer")}>
-                        打开支付页
+                      <button type="button" className="secondary-button" onClick={() => openPaymentWindow(pendingPaymentDisplay.paymentUrl)}>
+                        在新窗口打开支付页
                       </button>
                     ) : null}
                   </div>
                 ) : null}
 
                 {activeOrder.status === "paying" && !pendingPaymentDisplay.paymentQrCode && pendingPaymentDisplay.paymentUrl ? (
-                  <button type="button" className="secondary-button" onClick={() => { window.location.href = pendingPaymentDisplay.paymentUrl; }}>
-                    前往支付宝支付
+                  <button type="button" className="secondary-button" onClick={() => openPaymentWindow(pendingPaymentDisplay.paymentUrl)}>
+                    在新窗口打开支付页
                   </button>
                 ) : null}
 
                 {activeOrder.status === "paying" && pendingPaymentDisplay.paymentUrlScheme ? (
-                  <div className="admin-feedback">当前平台返回的是移动端跳转链接，请优先使用手机支付宝完成支付。</div>
+                  <div className="admin-feedback">当前平台返回的是移动端跳转链接，请使用手机支付宝完成支付。</div>
                 ) : null}
 
                 {activeOrder.status === "code_issued" ? (
