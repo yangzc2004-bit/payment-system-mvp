@@ -90,15 +90,15 @@ async function handleSuccessfulPayment(order, notifyPayload) {
   });
 }
 
-router.post("/validate", (req, res) => {
+router.post("/validate", async (req, res) => {
   const { userId, token } = req.body;
-  const result = validateUserAccess(userId, token);
+  const result = await validateUserAccess(userId, token);
   res.json(result);
 });
 
 router.post("/create-order", async (req, res) => {
   const { userId, token, amount, returnPageUrl } = req.body;
-  const access = validateUserAccess(userId, token);
+  const access = await validateUserAccess(userId, token);
 
   if (!access.ok) {
     return res.status(401).json({ ok: false, message: access.message });
@@ -156,13 +156,15 @@ router.post("/create-order", async (req, res) => {
     status: order.status,
     message: "订单创建成功，请前往支付宝支付。",
     paymentUrl: order.paymentUrl,
+    paymentQrCode: paymentResult.paymentQrCode || "",
+    paymentUrlScheme: paymentResult.paymentUrlScheme || "",
     order: toPublicOrder(order)
   });
 });
 
-router.get("/order-status/:orderNo", (req, res) => {
+router.get("/order-status/:orderNo", async (req, res) => {
   const { userId, token } = readAccessPayload(req);
-  const access = validateUserAccess(userId, token);
+  const access = await validateUserAccess(userId, token);
 
   if (!access.ok) {
     return res.status(401).json({ ok: false, message: access.message });
