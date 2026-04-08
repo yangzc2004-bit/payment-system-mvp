@@ -6,11 +6,9 @@ function isEmpty(value) {
 }
 
 function sortAndFilterParams(params) {
-  const entries = Object.entries(params)
+  return Object.entries(params)
     .filter(([key, value]) => key !== "sign" && key !== "sign_type" && !isEmpty(value))
     .sort(([left], [right]) => left.localeCompare(right));
-
-  return entries;
 }
 
 export function createEpaySign(params, key) {
@@ -23,6 +21,16 @@ export function createEpaySign(params, key) {
 
 function buildAbsoluteUrl(baseUrl, path) {
   return new URL(path, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`).toString();
+}
+
+function buildSubmitUrl(params) {
+  const url = new URL(`${config.epayBaseUrl.replace(/\/$/, "")}/submit.php`);
+  Object.entries(params).forEach(([key, value]) => {
+    if (!isEmpty(value)) {
+      url.searchParams.set(key, String(value));
+    }
+  });
+  return url.toString();
 }
 
 export async function createAlipayPayment(order, options) {
@@ -45,44 +53,18 @@ export async function createAlipayPayment(order, options) {
 
   params.sign = createEpaySign(params, config.epayKey);
 
-  const response = await fetch(`${config.epayBaseUrl.replace(/\/$/, "")}/mapi.php`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body: new URLSearchParams(params).toString()
-  });
-
-  let body = null;
-  try {
-    body = await response.json();
-  } catch {
-    body = null;
-  }
-
-  if (!response.ok || !body || Number(body.code) !== 1) {
-    return {
-      ok: false,
-      message: body?.msg || `易支付下单失败，HTTP ${response.status}`,
-      upstream: body
-    };
-  }
-
-  const paymentUrl = body.payurl || body.qrcode || body.urlscheme || "";
-  if (!paymentUrl) {
-    return {
-      ok: false,
-      message: "易支付下单成功，但未返回支付地址。",
-      upstream: body
-    };
-  }
+  const submitUrl = buildSubmitUrl(params);
 
   return {
     ok: true,
-    mode: "real",
-    paymentUrl,
-    providerOrderId: String(body.trade_no || ""),
-    upstream: body
+    mode: "redirect",
+    paymentUrl: submitUrl,
+    paymentQrCode: "",
+    paymentUrlScheme: "",
+    providerOrderId: order.orderNo,
+    upstream: {
+      submitUrl
+    }
   };
 }
 

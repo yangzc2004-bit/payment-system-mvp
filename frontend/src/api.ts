@@ -39,6 +39,8 @@ export type PaymentOrderResponse = {
   status: OrderStatus;
   message: string;
   paymentUrl?: string;
+  paymentQrCode?: string;
+  paymentUrlScheme?: string;
   order: OrderSummary;
 };
 
@@ -129,6 +131,3 @@ export async function getAdminOrder(token: string, orderNo: string) {
     headers: buildAdminHeaders(token)
   });
 }
-
-
-

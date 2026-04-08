@@ -23,6 +23,12 @@ type PaymentQuery = {
   orderNo: string;
 };
 
+type PendingPaymentDisplay = {
+  paymentUrl: string;
+  paymentQrCode: string;
+  paymentUrlScheme: string;
+};
+
 function readPaymentQuery(): PaymentQuery {
   const params = new URLSearchParams(window.location.search);
 
@@ -95,7 +101,7 @@ function getStatusMessage(status: PaymentViewStatus) {
     case "created":
       return "订单已创建。";
     case "paying":
-      return "订单已创建，请前往支付宝完成支付。";
+      return "订单已创建，请按页面提示完成支付宝支付。";
     case "paid":
       return "支付成功，系统正在发卡。";
     case "code_issued":
@@ -124,6 +130,11 @@ function PaymentPage() {
   const [message, setMessage] = useState(getStatusMessage("verifying"));
   const [activeOrder, setActiveOrder] = useState<OrderSummary | null>(null);
   const [copyMessage, setCopyMessage] = useState("");
+  const [pendingPaymentDisplay, setPendingPaymentDisplay] = useState<PendingPaymentDisplay>({
+    paymentUrl: "",
+    paymentQrCode: "",
+    paymentUrlScheme: ""
+  });
 
   const amountNumber = Number(amount || 0);
   const isAmountValid = /^\d+$/.test(amount) && amountNumber >= 10 && amountNumber <= 2000;
@@ -217,6 +228,7 @@ function PaymentPage() {
     setStatus("creating");
     setMessage(getStatusMessage("creating"));
     setCopyMessage("");
+    setPendingPaymentDisplay({ paymentUrl: "", paymentQrCode: "", paymentUrlScheme: "" });
 
     try {
       const data = await createOrder({
@@ -230,9 +242,14 @@ function PaymentPage() {
       setStatus(data.order.status);
       setMessage(data.message || getStatusMessage(data.order.status));
       updateOrderNoInUrl(data.order.orderNo);
+      setPendingPaymentDisplay({
+        paymentUrl: data.paymentUrl || "",
+        paymentQrCode: data.paymentQrCode || "",
+        paymentUrlScheme: data.paymentUrlScheme || ""
+      });
 
-      if (data.paymentUrl) {
-        window.open(data.paymentUrl, "_blank", "noopener,noreferrer");
+      if (data.paymentUrl && !data.paymentQrCode) {
+        window.location.href = data.paymentUrl;
       }
     } catch (error) {
       setStatus("ready");
@@ -245,6 +262,7 @@ function PaymentPage() {
     setStatus("ready");
     setMessage(getStatusMessage("ready"));
     setCopyMessage("");
+    setPendingPaymentDisplay({ paymentUrl: "", paymentQrCode: "", paymentUrlScheme: "" });
     updateOrderNoInUrl("");
   }
 
@@ -272,7 +290,7 @@ function PaymentPage() {
             <div className="eyebrow">Secure Payment Center</div>
             <h1>在线充值中心</h1>
             <p className="hero-copy">
-              这是支付宝链接支付版。系统会自动确认支付并自动发卡，发卡完成后会直接在当前页面展示兑换卡密。
+              当前接入易支付自动收款。创建订单后会自动跳转或展示二维码，支付成功后系统自动发卡并在当前页面展示卡密。
             </p>
           </div>
           <div className={`status-card status-${status}`}>
@@ -333,26 +351,26 @@ function PaymentPage() {
                 <div className="summary-label">余额</div>
               </div>
               <div className="summary-side">
-                <div>支付方式：支付宝收银台链接</div>
+                <div>支付方式：支付宝</div>
                 <div>充值比例：1 : 1</div>
                 <div>订单状态：{activeOrder ? getStatusLabel(activeOrder.status) : "待创建"}</div>
               </div>
             </div>
 
             <div className="panel-tip">
-              点击创建订单后会自动打开支付宝支付链接。支付成功后系统会自动发卡，卡密会直接显示在当前页面。
+              如果系统返回二维码，请直接使用支付宝扫码支付；如果返回跳转链接，点击按钮前往支付页。支付成功后系统会自动发卡。
             </div>
 
             <button type="button" className="pay-button" disabled={!canCreateOrder} onClick={handleCreateOrder}>
-              {hasCompletedOrder ? "创建新订单" : "创建订单并前往支付宝支付"}
+              {hasCompletedOrder ? "创建新订单" : "创建订单并前往支付"}
             </button>
           </div>
 
           <div className="panel panel-side">
             <div className="panel-header">
               <div>
-                <h2>订单与发卡结果</h2>
-                <p>自动支付成功后会在这里显示卡密和兑换说明。</p>
+                <h2>支付与发卡结果</h2>
+                <p>按支付平台返回结果展示跳转按钮或二维码，并在发卡后展示卡密。</p>
               </div>
               <div className="tag muted-tag">自动化流程</div>
             </div>
@@ -361,13 +379,13 @@ function PaymentPage() {
               <div className="empty-state">
                 <div className="empty-icon" />
                 <div className="empty-title">等待创建订单</div>
-                <div className="empty-copy">创建订单后会自动打开支付宝支付页面，支付完成后这里会显示发卡结果。</div>
+                <div className="empty-copy">创建订单后，这里会展示支付指引和自动发卡结果。</div>
               </div>
             ) : (
               <div className="pay-card">
                 <div className="pay-card-top">
                   <div>
-                    <div className="pay-card-title">支付宝链接支付订单</div>
+                    <div className="pay-card-title">支付宝订单</div>
                     <div className="order-text">订单号：{activeOrder.orderNo}</div>
                   </div>
                   <div className="countdown">{getStatusLabel(activeOrder.status)}</div>
@@ -391,10 +409,27 @@ function PaymentPage() {
                   <div>支付通知：{activeOrder.paymentNotified ? "已收到" : "未收到"}</div>
                 </div>
 
-                {activeOrder.paymentUrl && !isFinalStatus(activeOrder.status) ? (
-                  <button type="button" className="secondary-button" onClick={() => window.open(activeOrder.paymentUrl, "_blank", "noopener,noreferrer")}>
-                    重新打开支付宝支付链接
+                {activeOrder.status === "paying" && pendingPaymentDisplay.paymentQrCode ? (
+                  <div className="qr-card code-card">
+                    <div className="qr-title">请使用支付宝扫码付款</div>
+                    <img className="qr-image" src={pendingPaymentDisplay.paymentQrCode} alt="支付宝二维码" />
+                    <div className="qr-note">如果扫码失败，可尝试点击下方链接前往支付页。</div>
+                    {pendingPaymentDisplay.paymentUrl ? (
+                      <button type="button" className="secondary-button" onClick={() => window.open(pendingPaymentDisplay.paymentUrl, "_blank", "noopener,noreferrer")}>
+                        打开支付页
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {activeOrder.status === "paying" && !pendingPaymentDisplay.paymentQrCode && pendingPaymentDisplay.paymentUrl ? (
+                  <button type="button" className="secondary-button" onClick={() => { window.location.href = pendingPaymentDisplay.paymentUrl; }}>
+                    前往支付宝支付
                   </button>
+                ) : null}
+
+                {activeOrder.status === "paying" && pendingPaymentDisplay.paymentUrlScheme ? (
+                  <div className="admin-feedback">当前平台返回的是移动端跳转链接，请优先使用手机支付宝完成支付。</div>
                 ) : null}
 
                 {activeOrder.status === "code_issued" ? (
@@ -554,7 +589,7 @@ function AdminPage() {
           <div>
             <div className="eyebrow">Payment Ops Console</div>
             <h1>支付订单后台</h1>
-            <p className="hero-copy">查看支付宝支付回调、发卡结果和异常订单，默认流程已经改为自动确认与自动发卡。</p>
+            <p className="hero-copy">查看支付回调、发卡结果和异常订单，默认流程已经改为自动确认与自动发卡。</p>
           </div>
           <div className="admin-hero-actions">
             <button type="button" className="ghost-button" onClick={() => loadOrders(adminToken, statusFilter, selectedOrder?.orderNo || "")}>刷新订单</button>
@@ -651,6 +686,5 @@ export default function App() {
   const isAdminPage = window.location.pathname.startsWith("/admin");
   return isAdminPage ? <AdminPage /> : <PaymentPage />;
 }
-
 
 
