@@ -9,6 +9,7 @@ export const config = {
   port: Number(process.env.PORT || 3001),
   sub2apiBaseUrl: process.env.SUB2API_BASE_URL || "",
   sub2apiAdminApiKey: process.env.SUB2API_ADMIN_API_KEY || "",
+  sub2apiAdminJwt: process.env.SUB2API_ADMIN_JWT || "",
   validDemoToken: process.env.VALID_DEMO_TOKEN || "demo_token_preview",
   adminPassword: process.env.ADMIN_PASSWORD || "admin123456",
   orderStoreFile: process.env.ORDER_STORE_FILE || path.join(backendRoot, "data", "orders.json"),
