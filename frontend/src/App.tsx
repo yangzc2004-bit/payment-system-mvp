@@ -78,7 +78,7 @@ function getStatusLabel(status: PaymentViewStatus) {
     case "paid":
       return "支付成功";
     case "code_issued":
-      return "已自动充值";
+      return "充值成功";
     case "issue_failed":
       return "充值失败";
     case "payment_failed":
@@ -107,7 +107,7 @@ function getStatusMessage(status: PaymentViewStatus) {
     case "code_issued":
       return "余额已自动充值到账。";
     case "issue_failed":
-      return "支付已完成，但充值失败，请联系管理员。";
+      return "支付已完成，但自动充值失败，请联系管理员。";
     case "payment_failed":
       return "支付失败或已关闭，请重新创建订单。";
     default:
@@ -119,17 +119,12 @@ function isFinalStatus(status: OrderStatus) {
   return status === "code_issued" || status === "issue_failed" || status === "payment_failed";
 }
 
-async function copyText(text: string) {
-  await navigator.clipboard.writeText(text);
-}
-
 function PaymentPage() {
   const [query] = useState(() => readPaymentQuery());
   const [amount, setAmount] = useState("50");
   const [status, setStatus] = useState<PaymentViewStatus>("verifying");
   const [message, setMessage] = useState(getStatusMessage("verifying"));
   const [activeOrder, setActiveOrder] = useState<OrderSummary | null>(null);
-  const [copyMessage, setCopyMessage] = useState("");
   const [pendingPaymentDisplay, setPendingPaymentDisplay] = useState<PendingPaymentDisplay>({
     paymentUrl: "",
     paymentQrCode: "",
@@ -234,7 +229,6 @@ function PaymentPage() {
 
     setStatus("creating");
     setMessage(getStatusMessage("creating"));
-    setCopyMessage("");
     setPendingPaymentDisplay({ paymentUrl: "", paymentQrCode: "", paymentUrlScheme: "" });
 
     try {
@@ -268,22 +262,8 @@ function PaymentPage() {
     setActiveOrder(null);
     setStatus("ready");
     setMessage(getStatusMessage("ready"));
-    setCopyMessage("");
     setPendingPaymentDisplay({ paymentUrl: "", paymentQrCode: "", paymentUrlScheme: "" });
     updateOrderNoInUrl("");
-  }
-
-  async function handleCopyCode() {
-    if (!activeOrder?.cardCode) {
-      return;
-    }
-
-    try {
-      await copyText(activeOrder.cardCode);
-      setCopyMessage("卡密已复制。请回到中转站兑换。");
-    } catch {
-      setCopyMessage("复制失败，请手动复制卡密。");
-    }
   }
 
   return (
@@ -297,7 +277,7 @@ function PaymentPage() {
             <div className="eyebrow">Secure Payment Center</div>
             <h1>在线充值中心</h1>
             <p className="hero-copy">
-              当前接入易支付自动收款。创建订单后会自动跳转或展示二维码，支付成功后系统自动充值到你的 Sub2API 账户。
+              当前接入易支付自动收款。创建订单后会自动跳转或展示二维码，支付成功后系统自动充值到你的 Sub2API 账户余额。
             </p>
           </div>
           <div className={`status-card status-${status}`}>
@@ -365,7 +345,7 @@ function PaymentPage() {
             </div>
 
             <div className="panel-tip">
-              如果系统返回二维码，请直接使用支付宝扫码支付；如果返回跳转链接，点击按钮前往支付页。支付成功后系统会自动充值到账。
+              如果系统返回二维码，请直接使用支付宝扫码支付；如果返回跳转链接，点击按钮前往支付页。支付成功后会自动充值到账。
             </div>
 
             <button type="button" className="pay-button" disabled={!canCreateOrder} onClick={handleCreateOrder}>
@@ -377,7 +357,7 @@ function PaymentPage() {
             <div className="panel-header">
               <div>
                 <h2>支付与充值结果</h2>
-                <p>按支付平台返回结果展示跳转按钮或二维码，并在成功后展示到账状态。</p>
+                <p>按支付平台返回结果展示跳转按钮或二维码，并在成功后显示到账状态。</p>
               </div>
               <div className="tag muted-tag">自动化流程</div>
             </div>
@@ -439,24 +419,12 @@ function PaymentPage() {
                   <div className="admin-feedback">当前平台返回的是移动端跳转链接，请优先使用手机支付宝完成支付。</div>
                 ) : null}
 
-                {activeOrder.status === "code_issued" && activeOrder.cardCode ? (
-                  <div className="qr-card code-card">
-                    <div className="qr-title">卡密已生成</div>
-                    <div className="code-value">{activeOrder.cardCode}</div>
-                    <div className="qr-note">{activeOrder.redeemHint}</div>
-                    <button type="button" className="secondary-button" onClick={handleCopyCode}>
-                      复制卡密
-                    </button>
-                    {copyMessage ? <div className="copy-feedback">{copyMessage}</div> : null}
-                  </div>
-                ) : null}
-
-                {activeOrder.status === "code_issued" && !activeOrder.cardCode ? (
-                  <div className="admin-feedback">余额已自动充值到账，无需兑换卡密。</div>
+                {activeOrder.status === "code_issued" ? (
+                  <div className="admin-feedback">余额已自动充值到账。当前订单金额已按 1:1 充值到你的账户。</div>
                 ) : null}
 
                 {activeOrder.status === "issue_failed" ? (
-                  <div className="admin-feedback">{activeOrder.issueMessage || "充值失败，请联系管理员处理。"}</div>
+                  <div className="admin-feedback">{activeOrder.issueMessage || "自动充值失败，请联系管理员处理。"}</div>
                 ) : null}
 
                 {isFinalStatus(activeOrder.status) ? (
@@ -611,7 +579,7 @@ function AdminPage() {
         <section className="admin-toolbar panel">
           <div>
             <h2>订单筛选</h2>
-            <p>按状态过滤，并点击订单查看支付链接、充值结果和错误信息。</p>
+            <p>按状态过滤，并点击订单查看支付链接、自动充值结果和错误信息。</p>
           </div>
           <select className="admin-select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
             <option value="all">全部订单</option>
@@ -652,7 +620,7 @@ function AdminPage() {
                       <td>{order.userId}</td>
                       <td>¥{order.amount}</td>
                       <td><span className={`admin-status-pill status-${order.status}`}>{getStatusLabel(order.status)}</span></td>
-                      <td>{order.cardCode ? "卡密" : order.status === "code_issued" ? "已充值" : "未完成"}</td>
+                      <td>{order.status === "code_issued" ? "已到账" : "处理中"}</td>
                       <td>{formatDateTime(order.createdAt)}</td>
                     </tr>
                   ))}
@@ -681,7 +649,6 @@ function AdminPage() {
                   <div>支付通知：{selectedOrder.paymentNotified ? "已收到" : "未收到"}</div>
                   <div>支付时间：{formatDateTime(selectedOrder.paidAt)}</div>
                   <div>充值时间：{formatDateTime(selectedOrder.cardIssuedAt)}</div>
-                  <div>卡密：{selectedOrder.cardCode || "无（自动充值）"}</div>
                   <div>结果信息：{selectedOrder.issueMessage || "无"}</div>
                 </div>
               </div>

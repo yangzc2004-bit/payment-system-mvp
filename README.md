@@ -1,53 +1,16 @@
-﻿# payment-system Transition Version
+﻿# payment-system Auto Recharge Version
 
-一个用于 Sub2API 中转站的过渡版充值系统。
+一个用于 Sub2API 中转站的自动支付充值系统。
 
 ## 当前流程
 
 1. 用户从站内入口进入充值页
-2. 输入金额并选择支付宝或微信支付
-3. 创建订单
-4. 页面展示对应的真实收款码图片
-5. 用户付款后点击“我已支付”
-6. 订单进入“待人工确认”
-7. 管理员在后台核对到账后点击“充值成功”或“确认失败”
-8. 点击“充值成功”时后端调用 Sub2API 充值
-
-## 目录结构
-
-```text
-payment-system-mvp/
-├─ frontend/
-│  ├─ public/
-│  │  ├─ alipay-qr.jpg
-│  │  └─ wechat-qr.jpg
-│  ├─ src/
-│  │  ├─ App.tsx
-│  │  ├─ api.ts
-│  │  ├─ main.tsx
-│  │  └─ styles.css
-│  ├─ .env.example
-│  └─ package.json
-├─ backend/
-│  ├─ data/
-│  │  └─ orders.json
-│  ├─ src/
-│  │  ├─ app.js
-│  │  ├─ config.js
-│  │  ├─ routes/
-│  │  │  ├─ admin.js
-│  │  │  └─ payment.js
-│  │  ├─ services/
-│  │  │  ├─ adminAuthService.js
-│  │  │  ├─ orderStore.js
-│  │  │  ├─ sub2apiService.js
-│  │  │  └─ tokenService.js
-│  │  └─ utils/
-│  │     └─ helpers.js
-│  ├─ .env.example
-│  └─ package.json
-└─ README.md
-```
+2. 输入金额并创建订单
+3. 系统跳转到易支付支付页或展示支付宝二维码
+4. 用户完成支付
+5. 易支付异步回调支付系统后端
+6. 后端自动调用 Sub2API Admin API 直接充值余额
+7. 用户页面自动显示“余额已自动充值到账”
 
 ## 启动方式
 
@@ -55,12 +18,10 @@ payment-system-mvp/
 
 ```bash
 cd backend
-copy .env.example .env
+cp .env.example .env
 npm install
-npm run dev
+node src/app.js
 ```
-
-默认地址：`http://localhost:3001`
 
 ### 前端
 
@@ -71,23 +32,19 @@ npm install
 npm run dev
 ```
 
-默认地址：`http://localhost:3000`
-
 ## 页面入口
 
 ### 用户充值页
 
 ```text
-http://localhost:3000/?user_id=123456&token=demo_token_preview&ui_mode=embedded
+http://localhost:3000/?user_id=1&token=demo_token_preview&ui_mode=embedded
 ```
 
-### 管理后台
+### 后台排障页
 
 ```text
 http://localhost:3000/admin
 ```
-
-默认后台密码：`admin123456`
 
 ## 关键配置
 
@@ -95,37 +52,60 @@ http://localhost:3000/admin
 
 ```env
 PORT=3001
-SUB2API_BASE_URL=
-SUB2API_ADMIN_API_KEY=
+PUBLIC_BASE_URL=http://43.156.141.204:3001
+EPAY_BASE_URL=https://pay.521cd.cn/xpay/epay
+EPAY_PID=10579
+EPAY_KEY=your_epay_key
+SUB2API_BASE_URL=http://43.156.141.204:8080
+SUB2API_ADMIN_JWT=your_admin_jwt
 VALID_DEMO_TOKEN=demo_token_preview
-ADMIN_PASSWORD=admin123456
-ORDER_STORE_FILE=
+ADMIN_PASSWORD=change_me
 ```
 
 ## 当前实现说明
 
 ### 已完成
 
-- 用户侧真实收款码展示
-- 创建订单
-- 记录 `user_id`、金额、支付方式
-- 订单写入本地 JSON 文件
-- 用户点击“我已支付”后进入待人工确认
-- 简易后台登录与订单列表
-- 后台人工确认成功 / 失败
-- 后台确认成功时调用 `sub2apiService`
+- 易支付下单
+- 支付成功异步回调
+- 订单持久化到本地 JSON 文件
+- 自动调用 Sub2API `create-and-redeem`
+- 支付成功后余额自动到账
+- 用户页显示自动充值结果
+- 后台页查看订单和异常状态
 
-### 当前仍是过渡版
+### 已验证
 
-- 没有接真实支付回调
-- 没有接 MySQL
-- 后台认证是简单密码保护
-- `sub2apiService` 在未配置真实 `SUB2API_BASE_URL` 和 `SUB2API_ADMIN_API_KEY` 时会走 mock 成功逻辑，方便本地联调
+- 创建订单成功
+- 标准易支付回调验签成功
+- 10 元订单自动为用户余额充值 10 元
 
-## 真实接入时改哪里
+## Debian 常驻运行
 
-- 用户支付页逻辑：`frontend/src/App.tsx`
-- 用户 / 后台 API：`backend/src/routes/payment.js`、`backend/src/routes/admin.js`
-- 订单存储：`backend/src/services/orderStore.js`
-- 后台认证：`backend/src/services/adminAuthService.js`
-- Sub2API 调用：`backend/src/services/sub2apiService.js`
+创建服务文件：`/etc/systemd/system/payment-system-backend.service`
+
+```ini
+[Unit]
+Description=Payment System Backend
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/payment-system-mvp/backend
+ExecStart=/usr/bin/node /root/payment-system-mvp/backend/src/app.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+```
+
+启用服务：
+
+```bash
+systemctl daemon-reload
+systemctl enable payment-system-backend
+systemctl start payment-system-backend
+systemctl status payment-system-backend
+```

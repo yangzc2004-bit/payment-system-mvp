@@ -1,0 +1,14 @@
+﻿[Unit]
+Description=Payment System Backend
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/payment-system-mvp/backend
+ExecStart=/usr/bin/node /root/payment-system-mvp/backend/src/app.js
+Restart=always
+RestartSec=5
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
