@@ -39,7 +39,7 @@ export async function validateUserAccess(userId, token) {
     return { ok: false, message: "缺少 userId 或 token。" };
   }
 
-  if (token === config.validDemoToken) {
+  if (config.allowDemoToken && token === config.validDemoToken) {
     return { ok: true, message: "访问校验通过。" };
   }
 
