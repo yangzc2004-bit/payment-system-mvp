@@ -81,11 +81,11 @@ function buildAdminHeaders(token: string) {
   };
 }
 
-export async function validateAccess(userId: string, token: string) {
+export async function validateAccess(userId: string, token: string, uiMode: string) {
   return requestJson<ValidateResponse>("/api/payment/validate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ userId, token })
+    body: JSON.stringify({ userId, token, uiMode })
   });
 }
 
@@ -94,6 +94,7 @@ export async function createOrder(payload: {
   token: string;
   amount: number;
   returnPageUrl: string;
+  uiMode: string;
 }) {
   return requestJson<PaymentOrderResponse>("/api/payment/create-order", {
     method: "POST",
@@ -106,8 +107,9 @@ export async function getOrderStatus(params: {
   orderNo: string;
   userId: string;
   token: string;
+  uiMode: string;
 }) {
-  const query = new URLSearchParams({ userId: params.userId, token: params.token });
+  const query = new URLSearchParams({ userId: params.userId, token: params.token, ui_mode: params.uiMode });
   return requestJson<PaymentOrderResponse>(`/api/payment/order-status/${params.orderNo}?${query.toString()}`);
 }
 
@@ -131,3 +133,4 @@ export async function getAdminOrder(token: string, orderNo: string) {
     headers: buildAdminHeaders(token)
   });
 }
+

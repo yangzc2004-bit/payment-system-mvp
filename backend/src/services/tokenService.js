@@ -34,12 +34,16 @@ async function validateTokenWithSub2API(userId, token) {
   }
 }
 
-export async function validateUserAccess(userId, token) {
+export async function validateUserAccess(userId, token, options = {}) {
   if (!userId || !token) {
     return { ok: false, message: "缺少 userId 或 token。" };
   }
 
   if (config.allowDemoToken && token === config.validDemoToken) {
+    if (options.requireEmbedded) {
+      return { ok: false, message: "生产环境不允许通过 demo token 访问嵌入支付页。" };
+    }
+
     return { ok: true, message: "访问校验通过。" };
   }
 

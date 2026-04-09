@@ -3,6 +3,7 @@ import { config } from "../config.js";
 
 const adminSessions = new Map();
 const failedAttempts = new Map();
+const adminAuditLogs = [];
 
 function nowMs() {
   return Date.now();
@@ -61,6 +62,21 @@ function clearFailedAttempts(ip) {
   failedAttempts.delete(getClientKey(ip));
 }
 
+export function appendAdminAuditLog(entry) {
+  adminAuditLogs.push({
+    ...entry,
+    createdAt: new Date().toISOString()
+  });
+
+  if (adminAuditLogs.length > 200) {
+    adminAuditLogs.shift();
+  }
+}
+
+export function listAdminAuditLogs() {
+  return [...adminAuditLogs].reverse();
+}
+
 export function createAdminSession(password, ip) {
   if (!config.adminPassword) {
     return { ok: false, message: "后台密码未配置。" };
@@ -68,11 +84,13 @@ export function createAdminSession(password, ip) {
 
   const failureState = getFailureState(ip);
   if (failureState.lockUntil && failureState.lockUntil > nowMs()) {
+    appendAdminAuditLog({ type: "login_locked", ip: getClientKey(ip) });
     return { ok: false, message: "登录失败次数过多，请稍后再试。" };
   }
 
   if (password !== config.adminPassword) {
     recordFailedAttempt(ip);
+    appendAdminAuditLog({ type: "login_failed", ip: getClientKey(ip) });
     return { ok: false, message: "后台密码错误。" };
   }
 
@@ -86,6 +104,7 @@ export function createAdminSession(password, ip) {
     ip: getClientKey(ip)
   });
 
+  appendAdminAuditLog({ type: "login_success", ip: getClientKey(ip) });
   return { ok: true, token };
 }
 

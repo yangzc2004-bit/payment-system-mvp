@@ -1,5 +1,5 @@
 ﻿import express from "express";
-import { getOrder, saveOrder, updateOrder } from "../services/orderStore.js";
+import { getOrder, saveOrder, updateOrder, listOrders } from "../services/orderStore.js";
 import { issueRedeemCodeForOrder } from "../services/codeService.js";
 import { createAlipayPayment, verifyAlipayNotification } from "../services/paymentGatewayService.js";
 import { validateUserAccess } from "../services/tokenService.js";
@@ -7,18 +7,21 @@ import { config } from "../config.js";
 import { ORDER_STATUS, generateOrderNo, getStatusMessage, toPublicOrder } from "../utils/helpers.js";
 
 const router = express.Router();
+const recentCreateAttempts = new Map();
 
 function readAccessPayload(req) {
   if (req.method === "GET") {
     return {
       userId: typeof req.query.userId === "string" ? req.query.userId : "",
-      token: typeof req.query.token === "string" ? req.query.token : ""
+      token: typeof req.query.token === "string" ? req.query.token : "",
+      uiMode: typeof req.query.ui_mode === "string" ? req.query.ui_mode : ""
     };
   }
 
   return {
     userId: req.body.userId,
-    token: req.body.token
+    token: req.body.token,
+    uiMode: req.body.uiMode
   };
 }
 
@@ -52,6 +55,50 @@ function getClientIp(req) {
 
   const rawIp = req.ip || req.socket?.remoteAddress || "127.0.0.1";
   return rawIp.replace(/^::ffff:/, "");
+}
+
+function resolveSafeReturnPageUrl(req, value) {
+  const fallback = `${config.publicBaseUrl || `${req.protocol}://${req.get("host")}`}/`;
+
+  if (!value || typeof value !== "string") {
+    return fallback;
+  }
+
+  try {
+    const parsed = new URL(value);
+    const origin = parsed.origin;
+    if (!config.allowedReturnOrigins.includes(origin)) {
+      return fallback;
+    }
+
+    return `${origin}${parsed.pathname}`;
+  } catch {
+    return fallback;
+  }
+}
+
+function canCreateOrderForUser(userId) {
+  const now = Date.now();
+  const lastAttempt = recentCreateAttempts.get(String(userId)) || 0;
+  const cooldown = config.orderCreateCooldownSeconds * 1000;
+
+  if (lastAttempt && now - lastAttempt < cooldown) {
+    return {
+      ok: false,
+      message: `下单过于频繁，请在 ${config.orderCreateCooldownSeconds} 秒后再试。`
+    };
+  }
+
+  const pendingOrders = listOrders().filter((order) => order.userId === userId && order.status === ORDER_STATUS.paying);
+  if (pendingOrders.length >= config.maxPendingOrdersPerUser) {
+    return {
+      ok: false,
+      message: `当前仍有 ${pendingOrders.length} 笔待支付订单，请先完成或补单后再创建新订单。`
+    };
+  }
+
+  recentCreateAttempts.set(String(userId), now);
+  return { ok: true };
 }
 
 async function handleSuccessfulPayment(order, notifyPayload) {
@@ -91,21 +138,30 @@ async function handleSuccessfulPayment(order, notifyPayload) {
 }
 
 router.post("/validate", async (req, res) => {
-  const { userId, token } = req.body;
-  const result = await validateUserAccess(userId, token);
+  const { userId, token, uiMode } = req.body;
+  const result = await validateUserAccess(userId, token, { requireEmbedded: uiMode === "embedded" });
   res.json(result);
 });
 
 router.post("/create-order", async (req, res) => {
-  const { userId, token, amount, returnPageUrl } = req.body;
-  const access = await validateUserAccess(userId, token);
+  const { userId, token, amount, returnPageUrl, uiMode } = req.body;
+  const access = await validateUserAccess(userId, token, { requireEmbedded: true });
 
   if (!access.ok) {
     return res.status(401).json({ ok: false, message: access.message });
   }
 
+  if (uiMode !== "embedded") {
+    return res.status(400).json({ ok: false, message: "支付页只允许通过嵌入入口访问。" });
+  }
+
   if (!Number.isInteger(amount) || amount < 1 || amount > 2000) {
     return res.status(400).json({ ok: false, message: "金额不合法，请输入 1 到 2000 之间的整数。" });
+  }
+
+  const createCheck = canCreateOrderForUser(String(userId));
+  if (!createCheck.ok) {
+    return res.status(429).json({ ok: false, message: createCheck.message });
   }
 
   const orderNo = generateOrderNo();
@@ -120,7 +176,7 @@ router.post("/create-order", async (req, res) => {
     paymentUrl: "",
     paymentProviderOrderId: "",
     paymentNotified: false,
-    returnPageUrl: typeof returnPageUrl === "string" ? returnPageUrl : "",
+    returnPageUrl: resolveSafeReturnPageUrl(req, returnPageUrl),
     cardCode: "",
     redeemHint: config.redeemCodeHint,
     createdAt: now,
@@ -163,11 +219,15 @@ router.post("/create-order", async (req, res) => {
 });
 
 router.get("/order-status/:orderNo", async (req, res) => {
-  const { userId, token } = readAccessPayload(req);
-  const access = await validateUserAccess(userId, token);
+  const { userId, token, uiMode } = readAccessPayload(req);
+  const access = await validateUserAccess(userId, token, { requireEmbedded: true });
 
   if (!access.ok) {
     return res.status(401).json({ ok: false, message: access.message });
+  }
+
+  if (uiMode !== "embedded") {
+    return res.status(400).json({ ok: false, message: "支付页只允许通过嵌入入口访问。" });
   }
 
   const order = getOrder(req.params.orderNo);
@@ -190,6 +250,9 @@ router.get("/return", async (req, res) => {
     const verifyResult = verifyAlipayNotification(payload);
     if (
       verifyResult.ok &&
+      payload.pid === config.epayPid &&
+      String(payload.type || "") === "alipay" &&
+      String(payload.param || "") === String(order.userId) &&
       (verifyResult.tradeStatus === "TRADE_SUCCESS" || verifyResult.tradeStatus === "TRADE_FINISHED") &&
       Math.abs(verifyResult.paidAmount - Number(order.amount)) <= 0.0001
     ) {
@@ -197,7 +260,7 @@ router.get("/return", async (req, res) => {
     }
   }
 
-  const redirectBase = order?.returnPageUrl || `${req.protocol}://${req.get("host")}/`;
+  const redirectBase = order?.returnPageUrl || `${config.publicBaseUrl || `${req.protocol}://${req.get("host")}`}/`;
   const redirectUrl = new URL(redirectBase);
 
   if (orderNo) {
@@ -222,6 +285,10 @@ router.post("/alipay-notify", async (req, res) => {
 
   const verifyResult = verifyAlipayNotification(payload);
   if (!verifyResult.ok) {
+    return res.status(400).send("fail");
+  }
+
+  if (payload.pid !== config.epayPid || String(payload.type || "") !== "alipay" || String(payload.param || "") !== String(order.userId)) {
     return res.status(400).send("fail");
   }
 
@@ -252,5 +319,3 @@ router.post("/alipay-notify", async (req, res) => {
 });
 
 export default router;
-
-

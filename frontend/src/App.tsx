@@ -164,7 +164,7 @@ function PaymentPage() {
 
     let active = true;
 
-    validateAccess(query.userId, query.token)
+    validateAccess(query.userId, query.token, query.uiMode)
       .then(async (data) => {
         if (!active) {
           return;
@@ -703,5 +703,7 @@ export default function App() {
   const isAdminPage = window.location.pathname.startsWith("/admin");
   return isAdminPage ? <AdminPage /> : <PaymentPage />;
 }
+
+
 
 

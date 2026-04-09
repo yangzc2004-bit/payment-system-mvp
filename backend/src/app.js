@@ -8,7 +8,19 @@ import { config } from "./config.js";
 const app = express();
 const frontendDist = "/root/payment-system-mvp/frontend/dist";
 
-app.use(cors());
+app.set("trust proxy", true);
+
+const corsOptions = {
+  origin(origin, callback) {
+    if (!origin || config.allowedCorsOrigins.includes(origin)) {
+      return callback(null, true);
+    }
+
+    return callback(new Error("CORS blocked"));
+  }
+};
+
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

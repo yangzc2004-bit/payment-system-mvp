@@ -1,9 +1,7 @@
 ﻿import express from "express";
-import { getOrder, listOrders } from "../services/orderStore.js";
-import { createAdminSession, requireAdminAuth } from "../services/adminAuthService.js";
-import { createEpaySign } from "../services/paymentGatewayService.js";
-import { verifyAlipayNotification } from "../services/paymentGatewayService.js";
-import { updateOrder } from "../services/orderStore.js";
+import { getOrder, listOrders, updateOrder } from "../services/orderStore.js";
+import { appendAdminAuditLog, createAdminSession, listAdminAuditLogs, requireAdminAuth } from "../services/adminAuthService.js";
+import { createEpaySign, verifyAlipayNotification } from "../services/paymentGatewayService.js";
 import { issueRedeemCodeForOrder } from "../services/codeService.js";
 import { ORDER_STATUS, toPublicOrder } from "../utils/helpers.js";
 import { config } from "../config.js";
@@ -75,8 +73,14 @@ router.get("/orders/:orderNo", (req, res) => {
   return res.json({ ok: true, order: toPublicOrder(order) });
 });
 
+router.get("/audit-logs", (_req, res) => {
+  return res.json({ ok: true, logs: listAdminAuditLogs() });
+});
+
 router.post("/orders/:orderNo/replay-success", async (req, res) => {
   const order = getOrder(req.params.orderNo);
+  const confirm = req.body?.confirm === true;
+  const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
 
   if (!order) {
     return res.status(404).json({ ok: false, message: "订单不存在。" });
@@ -84,6 +88,10 @@ router.post("/orders/:orderNo/replay-success", async (req, res) => {
 
   if (order.status !== ORDER_STATUS.paying) {
     return res.status(400).json({ ok: false, message: "当前订单状态不允许补单。" });
+  }
+
+  if (!confirm || !reason) {
+    return res.status(400).json({ ok: false, message: "补单必须二次确认并填写原因。" });
   }
 
   const payload = {
@@ -104,9 +112,19 @@ router.post("/orders/:orderNo/replay-success", async (req, res) => {
     return res.status(400).json({ ok: false, message: verifyResult.message || "补单签名校验失败。" });
   }
 
+  appendAdminAuditLog({
+    type: "replay_success",
+    ip: req.ip,
+    orderNo: order.orderNo,
+    previousStatus: order.status,
+    reason,
+    adminTokenSuffix: String(req.adminToken || "").slice(-6)
+  });
+
   const nextOrder = await applySuccessfulPayment(order, payload);
-  return res.json({ ok: true, message: "补单成功。", order: toPublicOrder(nextOrder) });
+  const finalNote = `[补单] ${reason}`;
+  updateOrder(order.orderNo, { adminNote: finalNote });
+  return res.json({ ok: true, message: "补单成功。", order: toPublicOrder(getOrder(order.orderNo)) });
 });
 
 export default router;
-
