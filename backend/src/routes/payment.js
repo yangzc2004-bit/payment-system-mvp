@@ -90,7 +90,7 @@ function canCreateOrderForUser(userId) {
   }
 
   const pendingOrders = listOrders().filter((order) => order.userId === userId && order.status === ORDER_STATUS.paying);
-  if (pendingOrders.length >= config.maxPendingOrdersPerUser) {
+  if (config.maxPendingOrdersPerUser > 0 && pendingOrders.length >= config.maxPendingOrdersPerUser) {
     return {
       ok: false,
       message: `当前仍有 ${pendingOrders.length} 笔待支付订单，请先完成或补单后再创建新订单。`
@@ -319,3 +319,4 @@ router.post("/alipay-notify", async (req, res) => {
 });
 
 export default router;
+
