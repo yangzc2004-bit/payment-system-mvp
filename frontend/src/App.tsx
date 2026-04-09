@@ -145,7 +145,7 @@ function PaymentPage() {
     const data = await getOrderStatus({
       orderNo,
       userId: query.userId,
-      token: query.token
+      token: query.token,
       uiMode: query.uiMode
     });
 
@@ -241,7 +241,8 @@ function PaymentPage() {
         userId: query.userId,
         token: query.token,
         amount: amountNumber,
-        returnPageUrl: `${window.location.origin}${window.location.pathname}`
+        returnPageUrl: `${window.location.origin}${window.location.pathname}`,
+        uiMode: query.uiMode
       });
 
       setActiveOrder(data.order);
@@ -704,6 +705,7 @@ export default function App() {
   const isAdminPage = window.location.pathname.startsWith("/admin");
   return isAdminPage ? <AdminPage /> : <PaymentPage />;
 }
+
 
 
 
