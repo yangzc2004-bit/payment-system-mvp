@@ -146,6 +146,7 @@ function PaymentPage() {
       orderNo,
       userId: query.userId,
       token: query.token
+      uiMode: query.uiMode
     });
 
     setActiveOrder(data.order);
