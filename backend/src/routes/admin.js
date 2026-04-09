@@ -79,8 +79,7 @@ router.get("/audit-logs", (_req, res) => {
 
 router.post("/orders/:orderNo/replay-success", async (req, res) => {
   const order = getOrder(req.params.orderNo);
-  const confirm = req.body?.confirm === true;
-  const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+
 
   if (!order) {
     return res.status(404).json({ ok: false, message: "订单不存在。" });
@@ -90,9 +89,7 @@ router.post("/orders/:orderNo/replay-success", async (req, res) => {
     return res.status(400).json({ ok: false, message: "当前订单状态不允许补单。" });
   }
 
-  if (!confirm || !reason) {
-    return res.status(400).json({ ok: false, message: "补单必须二次确认并填写原因。" });
-  }
+
 
   const payload = {
     pid: config.epayPid,
@@ -117,14 +114,14 @@ router.post("/orders/:orderNo/replay-success", async (req, res) => {
     ip: req.ip,
     orderNo: order.orderNo,
     previousStatus: order.status,
-    reason,
+    reason: "manual replay",
     adminTokenSuffix: String(req.adminToken || "").slice(-6)
   });
 
-  const nextOrder = await applySuccessfulPayment(order, payload);
-  const finalNote = `[补单] ${reason}`;
-  updateOrder(order.orderNo, { adminNote: finalNote });
+  await applySuccessfulPayment(order, payload);
+  updateOrder(order.orderNo, { adminNote: "[补单] manual replay" });
   return res.json({ ok: true, message: "补单成功。", order: toPublicOrder(getOrder(order.orderNo)) });
 });
 
 export default router;
+
