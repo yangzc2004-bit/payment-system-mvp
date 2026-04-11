@@ -5,14 +5,69 @@ import {
   getAdminOrder,
   getAdminOrders,
   getOrderStatus,
+  getPackageStock,
   validateAccess,
   type OrderStatus,
-  type OrderSummary
+  type OrderSummary,
+  type PackageStockInfo
 } from "./api";
 import "./styles.css";
 
-const QUICK_AMOUNTS = [1, 5, 10, 30, 50, 100, 200, 500];
 const ADMIN_TOKEN_KEY = "payment-system-admin-token";
+
+interface Package {
+  id: string;
+  emoji: string;
+  name: string;
+  cnyPrice: number;
+  usdPrice: number;
+  stockLimit: number;
+  description: string;
+  usageHint: string;
+}
+
+const PACKAGES: Package[] = [
+  {
+    id: 'trial',
+    emoji: '🎁',
+    name: '体验包',
+    cnyPrice: 5,
+    usdPrice: 5,
+    stockLimit: 10,
+    description: '适合临时小需求，改 bug、写脚本、补小功能',
+    usageHint: '约 50-100 次日常对话'
+  },
+  {
+    id: 'standard',
+    emoji: '📦',
+    name: '标准包',
+    cnyPrice: 12,
+    usdPrice: 15,
+    stockLimit: 8,
+    description: '适合日常使用，能支撑一个小项目的常规开发辅助',
+    usageHint: '约 150-300 次日常对话'
+  },
+  {
+    id: 'professional',
+    emoji: '🚀',
+    name: '专业包',
+    cnyPrice: 30,
+    usdPrice: 50,
+    stockLimit: 4,
+    description: '适合高频开发，支持多项目并行、长代码分析、持续迭代',
+    usageHint: '约 500-1000 次日常对话'
+  },
+  {
+    id: 'premium',
+    emoji: '💎',
+    name: '豪华包',
+    cnyPrice: 50,
+    usdPrice: 100,
+    stockLimit: 3,
+    description: '适合重度用户，复杂项目、长时间高强度使用更稳',
+    usageHint: '约 1000-2000 次日常对话'
+  }
+];
 
 type PaymentViewStatus = "verifying" | "ready" | "creating" | "invalid" | OrderStatus;
 
@@ -125,7 +180,9 @@ function openPaymentWindow(url: string) {
 
 function PaymentPage() {
   const [query] = useState(() => readPaymentQuery());
-  const [amount, setAmount] = useState("50");
+  const [selectedPackageId, setSelectedPackageId] = useState<string>("");
+  const selectedPackage = PACKAGES.find(pkg => pkg.id === selectedPackageId);
+  const amount = selectedPackage ? String(selectedPackage.cnyPrice) : "";
   const [status, setStatus] = useState<PaymentViewStatus>("verifying");
   const [message, setMessage] = useState(getStatusMessage("verifying"));
   const [activeOrder, setActiveOrder] = useState<OrderSummary | null>(null);
@@ -134,9 +191,10 @@ function PaymentPage() {
     paymentQrCode: "",
     paymentUrlScheme: ""
   });
+  const [packageStock, setPackageStock] = useState<Record<string, PackageStockInfo>>({});
 
   const amountNumber = Number(amount || 0);
-  const isAmountValid = /^\d+$/.test(amount) && amountNumber >= 1 && amountNumber <= 2000;
+  const isAmountValid = !!selectedPackageId && !!selectedPackage;
   const hasCompletedOrder = !!activeOrder && isFinalStatus(activeOrder.status);
   const canCreateOrder = isAmountValid && (status === "ready" || hasCompletedOrder);
   const isFormLocked = !!activeOrder && !isFinalStatus(activeOrder.status);
@@ -150,10 +208,19 @@ function PaymentPage() {
     });
 
     setActiveOrder(data.order);
-    setAmount(String(data.order.amount));
+    setSelectedPackageId(PACKAGES.find(pkg => pkg.cnyPrice === data.order.amount)?.id || "");
     setStatus(data.order.status);
     setMessage(data.message || getStatusMessage(data.order.status));
     return data.order;
+  }
+
+  async function loadPackageStock() {
+    try {
+      const data = await getPackageStock();
+      setPackageStock(data.stock);
+    } catch (error) {
+      console.error("加载库存失败:", error);
+    }
   }
 
   useEffect(() => {
@@ -164,6 +231,9 @@ function PaymentPage() {
     }
 
     let active = true;
+
+    // 加载库存信息
+    loadPackageStock();
 
     validateAccess(query.userId, query.token, query.uiMode)
       .then(async (data) => {
@@ -219,6 +289,8 @@ function PaymentPage() {
     const timer = window.setInterval(async () => {
       try {
         await syncOrder(activeOrder.orderNo);
+        // 订单状态更新后，刷新库存
+        await loadPackageStock();
       } catch {
         // Keep current UI on transient polling failures.
       }
@@ -303,38 +375,37 @@ function PaymentPage() {
             </div>
 
             <div className="field-block">
-              <label className="field-label" htmlFor="amount-input">
-                充值金额
-              </label>
-              <div className="amount-input-wrap">
-                <span className="currency">¥</span>
-                <input
-                  id="amount-input"
-                  inputMode="numeric"
-                  value={amount}
-                  disabled={isFormLocked}
-                  onChange={(event) => setAmount(event.target.value.replace(/\D/g, ""))}
-                  placeholder="请输入 1 到 2000 之间的整数金额"
-                />
-              </div>
-              {!isAmountValid ? <div className="error-text">金额必须是 1 到 2000 之间的整数。</div> : null}
-            </div>
+              <label className="field-label">选择充值套餐</label>
+              <div className="packages-grid">
+                {PACKAGES.map(pkg => {
+                  const stockInfo = packageStock[String(pkg.cnyPrice)];
+                  const remaining = stockInfo ? stockInfo.total - stockInfo.sold : pkg.stockLimit;
+                  const isSoldOut = stockInfo ? stockInfo.sold >= stockInfo.total : false;
+                  const isDisabled = isFormLocked || isSoldOut;
 
-            <div className="field-block">
-              <div className="field-label">快捷金额</div>
-              <div className="quick-row">
-                {QUICK_AMOUNTS.map((item) => (
-                  <button
-                    key={item}
-                    type="button"
-                    disabled={isFormLocked}
-                    className={String(item) === amount ? "quick active" : "quick"}
-                    onClick={() => setAmount(String(item))}
-                  >
-                    ¥{item}
-                  </button>
-                ))}
+                  return (
+                    <div
+                      key={pkg.id}
+                      className={`package-card ${selectedPackageId === pkg.id ? 'selected' : ''} ${isDisabled ? 'disabled' : ''} ${isSoldOut ? 'sold-out' : ''}`}
+                      onClick={() => !isDisabled && setSelectedPackageId(pkg.id)}
+                    >
+                      <div className="package-emoji">{pkg.emoji}</div>
+                      <div className="package-name">{pkg.name}</div>
+                      <div className="package-price">¥{pkg.cnyPrice} = ${pkg.usdPrice}</div>
+                      <div className="package-stock">
+                        {isSoldOut ? '已售罄' : `剩余${remaining}份`}
+                      </div>
+                      <div className="package-desc">{pkg.description}</div>
+                      <div className="package-usage">{pkg.usageHint}</div>
+                      {isSoldOut && <div className="sold-out-badge">售罄</div>}
+                    </div>
+                  );
+                })}
               </div>
+              <div className="pricing-footer">
+                💰 最低低至约 $0.2/1M tokens，比官方便宜 97%+
+              </div>
+              {!isAmountValid && <div className="error-text">请选择一个充值套餐</div>}
             </div>
 
             <div className="summary-box">

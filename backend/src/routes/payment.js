@@ -3,6 +3,7 @@ import { getOrder, saveOrder, updateOrder, listOrders } from "../services/orderS
 import { issueRedeemCodeForOrder } from "../services/codeService.js";
 import { createAlipayPayment, verifyAlipayNotification } from "../services/paymentGatewayService.js";
 import { validateUserAccess } from "../services/tokenService.js";
+import { getAllStock, hasStock, decrementStock } from "../services/packageStockService.js";
 import { config } from "../config.js";
 import { ORDER_STATUS, generateOrderNo, getStatusMessage, toPublicOrder } from "../utils/helpers.js";
 
@@ -114,6 +115,12 @@ async function handleSuccessfulPayment(order, notifyPayload) {
     paymentProviderOrderId: notifyPayload.trade_no || order.paymentProviderOrderId || ""
   });
 
+  // 扣减库存
+  const stockResult = decrementStock(order.amount);
+  if (!stockResult.ok) {
+    console.warn(`库存扣减失败: ${stockResult.message}, 订单: ${order.orderNo}`);
+  }
+
   const issueResult = await issueRedeemCodeForOrder(paidOrder);
 
   if (!issueResult.ok) {
@@ -143,6 +150,14 @@ router.post("/validate", async (req, res) => {
   res.json(result);
 });
 
+router.get("/package-stock", async (req, res) => {
+  const stock = getAllStock();
+  res.json({
+    ok: true,
+    stock
+  });
+});
+
 router.post("/create-order", async (req, res) => {
   const { userId, token, amount, returnPageUrl, uiMode } = req.body;
   const access = await validateUserAccess(userId, token, { requireEmbedded: true });
@@ -155,8 +170,20 @@ router.post("/create-order", async (req, res) => {
     return res.status(400).json({ ok: false, message: "支付页只允许通过嵌入入口访问。" });
   }
 
-  if (!Number.isInteger(amount) || amount < 1 || amount > 2000) {
-    return res.status(400).json({ ok: false, message: "金额不合法，请输入 1 到 2000 之间的整数。" });
+  const VALID_PACKAGE_AMOUNTS = [5, 12, 30, 50];
+  if (!Number.isInteger(amount) || !VALID_PACKAGE_AMOUNTS.includes(amount)) {
+    return res.status(400).json({
+      ok: false,
+      message: "请选择有效的充值套餐（¥5/¥12/¥30/¥50）"
+    });
+  }
+
+  // 检查库存
+  if (!hasStock(amount)) {
+    return res.status(400).json({
+      ok: false,
+      message: `该套餐已售罄，请选择其他套餐`
+    });
   }
 
   const createCheck = canCreateOrderForUser(String(userId));

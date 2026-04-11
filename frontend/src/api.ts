@@ -61,6 +61,16 @@ export type AdminOrderResponse = {
   order: OrderSummary;
 };
 
+export type PackageStockInfo = {
+  total: number;
+  sold: number;
+};
+
+export type PackageStockResponse = {
+  ok: boolean;
+  stock: Record<string, PackageStockInfo>;
+};
+
 const API_BASE = (import.meta.env.VITE_API_BASE_URL || "").trim() || window.location.origin;
 
 async function requestJson<T>(path: string, init?: RequestInit): Promise<T> {
@@ -81,11 +91,11 @@ function buildAdminHeaders(token: string) {
   };
 }
 
-export async function validateAccess(userId: string, token: string, uiMode: string) {
+export async function validateAccess(userId: string, token: string) {
   return requestJson<ValidateResponse>("/api/payment/validate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ userId, token, uiMode })
+    body: JSON.stringify({ userId, token })
   });
 }
 
@@ -94,7 +104,6 @@ export async function createOrder(payload: {
   token: string;
   amount: number;
   returnPageUrl: string;
-  uiMode: string;
 }) {
   return requestJson<PaymentOrderResponse>("/api/payment/create-order", {
     method: "POST",
@@ -107,9 +116,8 @@ export async function getOrderStatus(params: {
   orderNo: string;
   userId: string;
   token: string;
-  uiMode: string;
 }) {
-  const query = new URLSearchParams({ userId: params.userId, token: params.token, ui_mode: params.uiMode });
+  const query = new URLSearchParams({ userId: params.userId, token: params.token });
   return requestJson<PaymentOrderResponse>(`/api/payment/order-status/${params.orderNo}?${query.toString()}`);
 }
 
@@ -132,5 +140,9 @@ export async function getAdminOrder(token: string, orderNo: string) {
   return requestJson<AdminOrderResponse>(`/api/admin/orders/${orderNo}`, {
     headers: buildAdminHeaders(token)
   });
+}
+
+export async function getPackageStock() {
+  return requestJson<PackageStockResponse>("/api/payment/package-stock");
 }
 

@@ -114,12 +114,13 @@ router.post("/orders/:orderNo/replay-success", async (req, res) => {
     ip: req.ip,
     orderNo: order.orderNo,
     previousStatus: order.status,
-    reason: "manual replay",
+    reason,
     adminTokenSuffix: String(req.adminToken || "").slice(-6)
   });
 
-  await applySuccessfulPayment(order, payload);
-  updateOrder(order.orderNo, { adminNote: "[补单] manual replay" });
+  const nextOrder = await applySuccessfulPayment(order, payload);
+  nextOrder.adminNote = `[补单] ${reason}`;
+  updateOrder(order.orderNo, { adminNote: nextOrder.adminNote });
   return res.json({ ok: true, message: "补单成功。", order: toPublicOrder(getOrder(order.orderNo)) });
 });
 
